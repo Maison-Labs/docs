@@ -13,7 +13,7 @@ declare module "react" {
       "maison-account-badge": DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {
         "portal-url"?: string;
       };
-      "maison-org-switcher": DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {
+      "maison-client-switcher": DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {
         "portal-url"?: string;
       };
       "maison-theme-toggle": DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & {

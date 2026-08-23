@@ -18,7 +18,7 @@ export function TopBar() {
         <Link className="m-link hidden sm:inline" href="/guides/authentication">
           Guides
         </Link>
-        <maison-org-switcher />
+        <maison-client-switcher />
         <ThemeToggle />
         <maison-app-switcher />
         <maison-account-badge />
