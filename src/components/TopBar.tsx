@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
-import { PORTAL_URL } from "@/lib/registry";
 
 /** Global top navigation. */
 export function TopBar() {
@@ -19,10 +18,10 @@ export function TopBar() {
         <Link className="m-link hidden sm:inline" href="/guides/authentication">
           Guides
         </Link>
-        <a className="m-link hidden sm:inline" href={PORTAL_URL}>
-          Portal
-        </a>
+        <maison-org-switcher />
         <ThemeToggle />
+        <maison-app-switcher />
+        <maison-account-badge />
       </nav>
     </header>
   );

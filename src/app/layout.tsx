@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Script from "next/script";
 import { TopBar } from "@/components/TopBar";
+import { PORTAL_URL } from "@/lib/registry";
 
 export const metadata: Metadata = {
   title: "Maison API Docs",
@@ -33,6 +35,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <TopBar />
         {children}
+        {/* Shared Maison header components (app switcher + account badge) */}
+        <Script src={`${PORTAL_URL}/app-switcher.js`} strategy="afterInteractive" />
       </body>
     </html>
   );

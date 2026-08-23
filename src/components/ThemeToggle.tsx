@@ -25,7 +25,13 @@ export function ThemeToggle() {
     document.documentElement.setAttribute("data-theme", next);
     try {
       localStorage.setItem(THEME_KEY, next);
-      document.cookie = `${THEME_KEY}=${next}; max-age=31536000; path=/; SameSite=Lax`;
+      const host = location.hostname;
+      // Domain-wide on real domains so sibling apps (table., docs., …) share it
+      const domain =
+        host === "localhost" || /^[0-9.:]+$/.test(host) || !host.includes(".")
+          ? ""
+          : `; domain=.${host.split(".").slice(-2).join(".")}`;
+      document.cookie = `${THEME_KEY}=${next}; max-age=31536000; path=/${domain}; SameSite=Lax`;
     } catch {
       // storage unavailable — the attribute alone still themes this page
     }
