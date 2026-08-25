@@ -51,6 +51,10 @@
               "api-reference/endpoint/delete",
               "api-reference/endpoint/webhook"
             ]
+          },
+          {
+            "group": "XOS — Experiences",
+            "openapi": "/api-reference/xos/openapi.json"
           }
         ]
       }

@@ -1,0 +1,5823 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Maison XOS — Experience OS capability API",
+    "version": "1.0.0",
+    "description": "The hotel operator's system of record for on-stay experiences (spa, activities, excursions, rentals, transfers): catalog → sellable gate → publish → availability → bookings → guests → inbox.\n\n**Shape.** Every capability is `POST /api/v1/<name>` with a JSON body and a JSON response; names are verbs, never CRUD. Each operation is designed to be handed to the Maison ADK as a tool: `operationId` is the tool name, the request schema is the tool input, the 200 body is the tool output.\n\n**Auth.** `Authorization: Bearer <credential>` on every capability: a portal-issued JWT (user tokens from the portal, machine tokens from the portal's OAuth token endpoint) or a portal API key (`mk_…`). Only `GET /health` and `GET /openapi.json` are open.\n\n**Tenancy.** The tenant is always the **client**. The client comes from the credential's `client` claim — never from the request. The optional `propertyId` body field selects a property within that client (default: the client's first property); a property outside the client is a 404. Machine credentials are scoped to exactly one client. A user token with `client: null` (all clients) resolves only when this deployment serves a single client; otherwise the user must pick a client in the portal.\n\n**Money and dates.** Amounts are numbers in major units of the accompanying `currency`; dates are `YYYY-MM-DD`; times are `HH:MM`; timestamps are ISO-8601.\n\n**Errors.** Non-2xx responses are `{ error, details? }`."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8183/api/v1"
+    },
+    {
+      "url": "https://xos.portal.maison/api/v1"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Catalog",
+      "description": "Experiences: create, edit, sellable gate, publish, archive"
+    },
+    {
+      "name": "Availability & Pricing",
+      "description": "Slots, blocks, capacity overrides and priced quotes"
+    },
+    {
+      "name": "Bookings",
+      "description": "Reserve, hold, confirm, modify, cancel"
+    },
+    {
+      "name": "Guests",
+      "description": "Guest profiles, stays and notes"
+    },
+    {
+      "name": "Inbox",
+      "description": "Guest conversations pushed in by channels; operator replies"
+    },
+    {
+      "name": "KPIs",
+      "description": "The KPI strips on each screen"
+    },
+    {
+      "name": "Property",
+      "description": "Properties within the client"
+    },
+    {
+      "name": "System",
+      "description": "Health and this document"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/list-properties": {
+      "post": {
+        "tags": [
+          "Property"
+        ],
+        "operationId": "listProperties",
+        "summary": "List the client's properties and the one in scope",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  }
+                },
+                "description": "No fields required (an empty object is fine)."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "properties": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Property"
+                      }
+                    },
+                    "current": {
+                      "$ref": "#/components/schemas/Property"
+                    }
+                  },
+                  "required": [
+                    "properties",
+                    "current"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/update-property": {
+      "post": {
+        "tags": [
+          "Property"
+        ],
+        "operationId": "updateProperty",
+        "summary": "Rename a property or change its timezone/currency",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The property to update (required here)"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "example": "Europe/Lisbon"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3
+                  }
+                },
+                "required": [
+                  "propertyId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Property"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Property not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-admin-only": true
+      }
+    },
+    "/search-experiences": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "searchExperiences",
+        "summary": "Catalog rows, filtered by status/category/text",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "published",
+                      "archived",
+                      "all"
+                    ]
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "wellness",
+                      "activity",
+                      "excursion",
+                      "rental",
+                      "transfer",
+                      "all"
+                    ]
+                  },
+                  "query": {
+                    "type": "string",
+                    "description": "Free-text match on name/location"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "experiences": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ExperienceSummary"
+                      }
+                    }
+                  },
+                  "required": [
+                    "experiences"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-experience": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "getExperience",
+        "summary": "Full experience detail (pricing, inventory defaults, gate, stats)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "experienceId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Experience"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/create-experience": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "createExperience",
+        "summary": "Create a draft experience",
+        "description": "Only `name` is required; every other ExperienceInput field is optional and defaults sensibly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "shortDescription": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "longDescription": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "wellness",
+                      "activity",
+                      "excursion",
+                      "rental",
+                      "transfer"
+                    ],
+                    "nullable": true
+                  },
+                  "inventoryModel": {
+                    "type": "string",
+                    "enum": [
+                      "slots",
+                      "per_unit"
+                    ]
+                  },
+                  "durationMinutes": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "location": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "leadTimeHours": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "basePrice": {
+                    "type": "number",
+                    "description": "Amount in major units of `currency`",
+                    "nullable": true
+                  },
+                  "currency": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3,
+                    "example": "USD"
+                  },
+                  "partyMin": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "partyMax": {
+                    "type": "integer",
+                    "nullable": true
+                  },
+                  "photoUrl": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "photos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "meetingType": {
+                    "type": "string",
+                    "enum": [
+                      "on_property",
+                      "lobby_pickup",
+                      "off_property"
+                    ],
+                    "nullable": true
+                  },
+                  "meetingDetail": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "includes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "bring": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "knowBefore": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "bookingQuestions": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/BookingQuestion"
+                    }
+                  },
+                  "agentNotes": {
+                    "type": "string",
+                    "description": "Private guidance for the Maison agent — never shown to guests",
+                    "nullable": true
+                  },
+                  "postBookingMessage": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "cancellationPreset": {
+                    "type": "string",
+                    "enum": [
+                      "flexible",
+                      "24h",
+                      "48h",
+                      "7d",
+                      "non_refundable"
+                    ],
+                    "nullable": true
+                  },
+                  "cancellationNotes": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "daysOpen": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 6
+                    },
+                    "description": "0 = Sunday … 6 = Saturday"
+                  },
+                  "slots": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                      "example": "14:00",
+                      "description": "Default start time"
+                    },
+                    "description": "Default start times (slots model)"
+                  },
+                  "slotCapacity": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "unitsTotal": {
+                    "type": "integer",
+                    "description": "per_unit model: pool size",
+                    "nullable": true
+                  },
+                  "hoursOpen": {
+                    "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                    "example": "14:00",
+                    "description": "Start time, HH:MM (24h)",
+                    "nullable": true
+                  },
+                  "hoursClose": {
+                    "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                    "example": "14:00",
+                    "description": "Start time, HH:MM (24h)",
+                    "nullable": true
+                  },
+                  "hostName": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "hostRole": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "pricesIncludeTax": {
+                    "type": "boolean"
+                  },
+                  "variants": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "description": "Keep an existing row"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "price": {
+                          "type": "number",
+                          "description": "Amount in major units of `currency`"
+                        },
+                        "isDefault": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "price",
+                        "isDefault"
+                      ]
+                    },
+                    "description": "Full-replace collection"
+                  },
+                  "customerTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "description": "Keep an existing row"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "ageRange": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "price": {
+                          "type": "number",
+                          "description": "Amount in major units of `currency`"
+                        },
+                        "maxPerBooking": {
+                          "type": "integer",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "ageRange",
+                        "price",
+                        "maxPerBooking"
+                      ]
+                    },
+                    "description": "Full-replace collection"
+                  },
+                  "fees": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "description": "Keep an existing row"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "number",
+                          "description": "Amount in major units of `currency`"
+                        },
+                        "isTaxable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "amount",
+                        "isTaxable"
+                      ]
+                    },
+                    "description": "Full-replace collection"
+                  },
+                  "ratePlans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "description": "Keep an existing row"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "factor": {
+                          "type": "number",
+                          "description": "Price multiplier, e.g. 1.25 for high season"
+                        },
+                        "isActive": {
+                          "type": "boolean"
+                        },
+                        "effectiveFrom": {
+                          "type": "string",
+                          "format": "date",
+                          "description": "Calendar date, YYYY-MM-DD",
+                          "nullable": true
+                        },
+                        "effectiveTo": {
+                          "type": "string",
+                          "format": "date",
+                          "description": "Calendar date, YYYY-MM-DD",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "factor",
+                        "isActive",
+                        "effectiveFrom",
+                        "effectiveTo"
+                      ]
+                    },
+                    "description": "Full-replace collection"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Experience"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/update-experience": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "updateExperience",
+        "summary": "Update any editable fields of an experience",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "changes": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "shortDescription": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "longDescription": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "category": {
+                        "type": "string",
+                        "enum": [
+                          "wellness",
+                          "activity",
+                          "excursion",
+                          "rental",
+                          "transfer"
+                        ],
+                        "nullable": true
+                      },
+                      "inventoryModel": {
+                        "type": "string",
+                        "enum": [
+                          "slots",
+                          "per_unit"
+                        ]
+                      },
+                      "durationMinutes": {
+                        "type": "integer",
+                        "nullable": true
+                      },
+                      "location": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "leadTimeHours": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "basePrice": {
+                        "type": "number",
+                        "description": "Amount in major units of `currency`",
+                        "nullable": true
+                      },
+                      "currency": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 3,
+                        "example": "USD"
+                      },
+                      "partyMin": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "partyMax": {
+                        "type": "integer",
+                        "nullable": true
+                      },
+                      "photoUrl": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "photos": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "meetingType": {
+                        "type": "string",
+                        "enum": [
+                          "on_property",
+                          "lobby_pickup",
+                          "off_property"
+                        ],
+                        "nullable": true
+                      },
+                      "meetingDetail": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "includes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "bring": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "knowBefore": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "bookingQuestions": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/BookingQuestion"
+                        }
+                      },
+                      "agentNotes": {
+                        "type": "string",
+                        "description": "Private guidance for the Maison agent — never shown to guests",
+                        "nullable": true
+                      },
+                      "postBookingMessage": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "cancellationPreset": {
+                        "type": "string",
+                        "enum": [
+                          "flexible",
+                          "24h",
+                          "48h",
+                          "7d",
+                          "non_refundable"
+                        ],
+                        "nullable": true
+                      },
+                      "cancellationNotes": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "daysOpen": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 6
+                        },
+                        "description": "0 = Sunday … 6 = Saturday"
+                      },
+                      "slots": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                          "example": "14:00",
+                          "description": "Default start time"
+                        },
+                        "description": "Default start times (slots model)"
+                      },
+                      "slotCapacity": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "unitsTotal": {
+                        "type": "integer",
+                        "description": "per_unit model: pool size",
+                        "nullable": true
+                      },
+                      "hoursOpen": {
+                        "type": "string",
+                        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                        "example": "14:00",
+                        "description": "Start time, HH:MM (24h)",
+                        "nullable": true
+                      },
+                      "hoursClose": {
+                        "type": "string",
+                        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                        "example": "14:00",
+                        "description": "Start time, HH:MM (24h)",
+                        "nullable": true
+                      },
+                      "hostName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "hostRole": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "pricesIncludeTax": {
+                        "type": "boolean"
+                      },
+                      "variants": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "description": "Keep an existing row"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "price": {
+                              "type": "number",
+                              "description": "Amount in major units of `currency`"
+                            },
+                            "isDefault": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "price",
+                            "isDefault"
+                          ]
+                        },
+                        "description": "Full-replace collection"
+                      },
+                      "customerTypes": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "description": "Keep an existing row"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "ageRange": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "price": {
+                              "type": "number",
+                              "description": "Amount in major units of `currency`"
+                            },
+                            "maxPerBooking": {
+                              "type": "integer",
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "label",
+                            "ageRange",
+                            "price",
+                            "maxPerBooking"
+                          ]
+                        },
+                        "description": "Full-replace collection"
+                      },
+                      "fees": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "description": "Keep an existing row"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "amount": {
+                              "type": "number",
+                              "description": "Amount in major units of `currency`"
+                            },
+                            "isTaxable": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "label",
+                            "amount",
+                            "isTaxable"
+                          ]
+                        },
+                        "description": "Full-replace collection"
+                      },
+                      "ratePlans": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "description": "Keep an existing row"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "factor": {
+                              "type": "number",
+                              "description": "Price multiplier, e.g. 1.25 for high season"
+                            },
+                            "isActive": {
+                              "type": "boolean"
+                            },
+                            "effectiveFrom": {
+                              "type": "string",
+                              "format": "date",
+                              "description": "Calendar date, YYYY-MM-DD",
+                              "nullable": true
+                            },
+                            "effectiveTo": {
+                              "type": "string",
+                              "format": "date",
+                              "description": "Calendar date, YYYY-MM-DD",
+                              "nullable": true
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "factor",
+                            "isActive",
+                            "effectiveFrom",
+                            "effectiveTo"
+                          ]
+                        },
+                        "description": "Full-replace collection"
+                      }
+                    },
+                    "description": "Partial ExperienceInput — only the fields to change"
+                  }
+                },
+                "required": [
+                  "experienceId",
+                  "changes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Experience"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/publish-experience": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "publishExperience",
+        "summary": "Run the sellable gate and publish",
+        "description": "Publishes only when the gate passes (name, category, base price + currency, inventory model + capacity, party size limits, cancellation policy, at least one included item). The gate result is always returned so the caller can show what is still missing.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "experienceId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "experience": {
+                      "$ref": "#/components/schemas/Experience"
+                    },
+                    "gate": {
+                      "$ref": "#/components/schemas/SellableGate"
+                    }
+                  },
+                  "required": [
+                    "experience",
+                    "gate"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input, or the sellable gate failed — `details.missing` lists the ExperienceInput field names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Archived experiences cannot be published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unpublish-experience": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "unpublishExperience",
+        "summary": "Take a published experience back to draft",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "experienceId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Experience"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/archive-experience": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "operationId": "archiveExperience",
+        "summary": "Archive (soft-delete) an experience",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "experienceId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Experience"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-availability": {
+      "post": {
+        "tags": [
+          "Availability & Pricing"
+        ],
+        "operationId": "getAvailability",
+        "summary": "Per-day availability with slot capacity/booked/held for a date range",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "from": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date, YYYY-MM-DD"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Inclusive end date"
+                  }
+                },
+                "required": [
+                  "experienceId",
+                  "from",
+                  "to"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "days": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AvailabilityDay"
+                      }
+                    }
+                  },
+                  "required": [
+                    "days"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/set-slot-capacity": {
+      "post": {
+        "tags": [
+          "Availability & Pricing"
+        ],
+        "operationId": "setSlotCapacity",
+        "summary": "Override one slot's capacity (materialises the slot if still virtual)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date, YYYY-MM-DD"
+                  },
+                  "time": {
+                    "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                    "example": "14:00",
+                    "description": "Start time, HH:MM (24h)"
+                  },
+                  "capacity": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "experienceId",
+                  "date",
+                  "time",
+                  "capacity"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Capacity below what is already booked/held",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/block-day": {
+      "post": {
+        "tags": [
+          "Availability & Pricing"
+        ],
+        "operationId": "blockDay",
+        "summary": "Block a date (operator closure)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date, YYYY-MM-DD"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "experienceId",
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unblock-day": {
+      "post": {
+        "tags": [
+          "Availability & Pricing"
+        ],
+        "operationId": "unblockDay",
+        "summary": "Lift a block on a date",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date, YYYY-MM-DD"
+                  }
+                },
+                "required": [
+                  "experienceId",
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/open-day": {
+      "post": {
+        "tags": [
+          "Availability & Pricing"
+        ],
+        "operationId": "openDay",
+        "summary": "Open a date that is normally closed (materialises the default slots)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date, YYYY-MM-DD"
+                  }
+                },
+                "required": [
+                  "experienceId",
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quote-experience": {
+      "post": {
+        "tags": [
+          "Availability & Pricing"
+        ],
+        "operationId": "quoteExperience",
+        "summary": "Priced availability answer for one date/time/party (what the agent quotes)",
+        "description": "Applies the variant or base price, the active seasonal rate plan for the date and the experience's fees. `available=false` comes with a `reason`. Emits `maison.salesagent.experience_quoted`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date, YYYY-MM-DD"
+                  },
+                  "time": {
+                    "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                    "example": "14:00",
+                    "description": "Omit for per_unit experiences or a whole-day answer",
+                    "nullable": true
+                  },
+                  "partySize": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "variantId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "experienceId",
+                  "date",
+                  "partySize"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search-bookings": {
+      "post": {
+        "tags": [
+          "Bookings"
+        ],
+        "operationId": "searchBookings",
+        "summary": "Bookings list with the operator filters",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "filter": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "today",
+                      "upcoming",
+                      "past",
+                      "pending",
+                      "cancelled"
+                    ]
+                  },
+                  "sourceChannel": {
+                    "type": "string",
+                    "enum": [
+                      "webchat",
+                      "sms",
+                      "email",
+                      "front_desk",
+                      "phone",
+                      "agent",
+                      "all"
+                    ]
+                  },
+                  "experienceId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "guestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "from": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date, YYYY-MM-DD"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date, YYYY-MM-DD"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bookings": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Booking"
+                      }
+                    }
+                  },
+                  "required": [
+                    "bookings"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-booking": {
+      "post": {
+        "tags": [
+          "Bookings"
+        ],
+        "operationId": "getBooking",
+        "summary": "One booking",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "bookingId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "bookingId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/create-booking": {
+      "post": {
+        "tags": [
+          "Bookings"
+        ],
+        "operationId": "createBooking",
+        "summary": "Reserve a slot for a guest (confirmed, or held for 15 minutes with hold=true)",
+        "description": "Checks lead time (in the property's timezone), party limits and remaining capacity, prices the booking exactly like `quote-experience` (a missing variantId resolves to the default variant), resolves or creates the guest, and reserves capacity on the slot — for per_unit experiences that is the day pool, whatever time is requested. Send an `Idempotency-Key` header so retries never double-book.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Caller-chosen key, scoped to the calling credential. Repeating a request with the same key and the same payload returns the original booking instead of creating a second one — always send it from a retrying channel. The same key with a different payload is refused (422).",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "propertyId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                      }
+                    }
+                  },
+                  {
+                    "$ref": "#/components/schemas/CreateBookingInput"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Experience or variant not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slot sold out, closed, blocked, or inside the lead time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Idempotency-Key reused with a different payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/confirm-booking": {
+      "post": {
+        "tags": [
+          "Bookings"
+        ],
+        "operationId": "confirmBooking",
+        "summary": "Confirm a held booking",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "bookingId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "bookingId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Hold expired or booking not in `held`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/modify-booking": {
+      "post": {
+        "tags": [
+          "Bookings"
+        ],
+        "operationId": "modifyBooking",
+        "summary": "Move a booking to another date/time, change party size, variant or request",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "bookingId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "changes": {
+                    "$ref": "#/components/schemas/ModifyBookingInput"
+                  }
+                },
+                "required": [
+                  "bookingId",
+                  "changes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Target slot cannot take the party",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cancel-booking": {
+      "post": {
+        "tags": [
+          "Bookings"
+        ],
+        "operationId": "cancelBooking",
+        "summary": "Cancel a booking and release its capacity",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "bookingId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "bookingId",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Booking not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Booking already cancelled, completed or no-show — only held/confirmed bookings can be cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search-guests": {
+      "post": {
+        "tags": [
+          "Guests"
+        ],
+        "operationId": "searchGuests",
+        "summary": "Guest list with stay filter and free-text search",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "query": {
+                    "type": "string",
+                    "description": "Matches name, email, phone, room"
+                  },
+                  "filter": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "in_house",
+                      "arriving",
+                      "returning",
+                      "checked_out"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "guests": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Guest"
+                      }
+                    }
+                  },
+                  "required": [
+                    "guests"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-guest": {
+      "post": {
+        "tags": [
+          "Guests"
+        ],
+        "operationId": "getGuest",
+        "summary": "Guest profile with booking history",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "guestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "guestId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Guest not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/add-guest-note": {
+      "post": {
+        "tags": [
+          "Guests"
+        ],
+        "operationId": "addGuestNote",
+        "summary": "Append an operator note to the guest",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "guestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "guestId",
+                  "note"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Guest not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/update-guest": {
+      "post": {
+        "tags": [
+          "Guests"
+        ],
+        "operationId": "updateGuest",
+        "summary": "Update guest contact, room, tags or stay dates",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "guestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "changes": {
+                    "type": "object",
+                    "properties": {
+                      "firstName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "lastName": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "email": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "phone": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "room": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "stayStart": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "Calendar date, YYYY-MM-DD",
+                        "nullable": true
+                      },
+                      "stayEnd": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "Calendar date, YYYY-MM-DD",
+                        "nullable": true
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "guestId",
+                  "changes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Guest not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/list-conversations": {
+      "post": {
+        "tags": [
+          "Inbox"
+        ],
+        "operationId": "listConversations",
+        "summary": "Inbox conversations (newest activity first) with counts per filter",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "filter": {
+                    "type": "string",
+                    "enum": [
+                      "needs_attention",
+                      "ai_handled",
+                      "waiting",
+                      "all"
+                    ],
+                    "default": "all"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversations": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Conversation"
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "needs_attention": {
+                          "type": "integer"
+                        },
+                        "ai_handled": {
+                          "type": "integer"
+                        },
+                        "waiting": {
+                          "type": "integer"
+                        },
+                        "all": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "needs_attention",
+                        "ai_handled",
+                        "waiting",
+                        "all"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "conversations",
+                    "counts"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-conversation": {
+      "post": {
+        "tags": [
+          "Inbox"
+        ],
+        "operationId": "getConversation",
+        "summary": "One conversation with its full thread",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "conversationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "conversationId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reply-to-conversation": {
+      "post": {
+        "tags": [
+          "Inbox"
+        ],
+        "operationId": "replyToConversation",
+        "summary": "Reply as the operator (thread becomes `waiting`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "conversationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 5000
+                  }
+                },
+                "required": [
+                  "conversationId",
+                  "body"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/resolve-conversation": {
+      "post": {
+        "tags": [
+          "Inbox"
+        ],
+        "operationId": "resolveConversation",
+        "summary": "Mark a conversation resolved",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  },
+                  "conversationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "conversationId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found in this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/record-conversation-message": {
+      "post": {
+        "tags": [
+          "Inbox"
+        ],
+        "operationId": "recordConversationMessage",
+        "summary": "Channel push: record one message into a thread (machine credentials only)",
+        "description": "Find-or-create the conversation by `externalRef`; on first sight the guest is matched by email, then phone, then name (created otherwise) and the experience/booking context is attached. The message sets the thread status unless `status` is given. Emits `maison.inbox.message_recorded`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "propertyId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                      }
+                    }
+                  },
+                  {
+                    "$ref": "#/components/schemas/RecordConversationMessageInput"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credential is not a machine credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "experienceId/bookingId does not belong to this client/property",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "x-machine-only": true
+      }
+    },
+    "/get-catalog-kpis": {
+      "post": {
+        "tags": [
+          "KPIs"
+        ],
+        "operationId": "getCatalogKpis",
+        "summary": "Catalog KPI strip: published/draft counts, 7-day bookings and fill rate, 30-day revenue",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  }
+                },
+                "description": "No fields required (an empty object is fine)."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogKpis"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-bookings-kpis": {
+      "post": {
+        "tags": [
+          "KPIs"
+        ],
+        "operationId": "getBookingsKpis",
+        "summary": "Bookings KPI strip: 7-day bookings/revenue, cancellation rate, average party size",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  }
+                },
+                "description": "No fields required (an empty object is fine)."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingsKpis"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-guests-kpis": {
+      "post": {
+        "tags": [
+          "KPIs"
+        ],
+        "operationId": "getGuestsKpis",
+        "summary": "Guests KPI strip: in-house, arriving today, returning, average spend",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "propertyId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional. Selects a property within the caller's client; defaults to the client's first property. An id outside the client is a 404."
+                  }
+                },
+                "description": "No fields required (an empty object is fine)."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestsKpis"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (zod issues in `details`) or no client could be resolved for the credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid portal credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "operationId": "health",
+        "summary": "Liveness + database ping",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "operationId": "openapi",
+        "summary": "This document",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The OpenAPI 3.0.3 document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "A portal-issued JWT (user or machine) or a portal API key (`mk_…`). The `client` claim decides the tenant."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable message"
+          },
+          "details": {
+            "description": "Optional structured detail (e.g. validation issues)"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "Property": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Europe/Lisbon"
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "timezone",
+          "currency"
+        ]
+      },
+      "BookingQuestion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "per_guest",
+              "per_booking"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "scope",
+          "required"
+        ]
+      },
+      "Variant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "price",
+          "isDefault"
+        ]
+      },
+      "CustomerType": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "ageRange": {
+            "type": "string",
+            "nullable": true
+          },
+          "price": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "maxPerBooking": {
+            "type": "integer",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "ageRange",
+          "price",
+          "maxPerBooking"
+        ]
+      },
+      "Fee": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "isTaxable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "amount",
+          "isTaxable"
+        ]
+      },
+      "RatePlan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "factor": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD",
+            "nullable": true
+          },
+          "effectiveTo": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "factor",
+          "isActive",
+          "effectiveFrom",
+          "effectiveTo"
+        ]
+      },
+      "ExperienceStats": {
+        "type": "object",
+        "properties": {
+          "booked7d": {
+            "type": "integer"
+          },
+          "capacity7d": {
+            "type": "integer"
+          },
+          "bookedPrev7d": {
+            "type": "integer"
+          },
+          "revenue30d": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "bookingsCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "booked7d",
+          "capacity7d",
+          "bookedPrev7d",
+          "revenue30d",
+          "bookingsCount"
+        ],
+        "description": "Rolling stats every catalog row and detail hero shows"
+      },
+      "SellableGate": {
+        "type": "object",
+        "properties": {
+          "sellable": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Field names still required before publish, e.g. basePrice, includes"
+          }
+        },
+        "required": [
+          "sellable",
+          "missing"
+        ],
+        "description": "The sellable gate (FR2): what is missing before publish is allowed"
+      },
+      "ExperienceInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "shortDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "longDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "wellness",
+              "activity",
+              "excursion",
+              "rental",
+              "transfer"
+            ],
+            "nullable": true
+          },
+          "inventoryModel": {
+            "type": "string",
+            "enum": [
+              "slots",
+              "per_unit"
+            ]
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "leadTimeHours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "basePrice": {
+            "type": "number",
+            "description": "Amount in major units of `currency`",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "example": "USD"
+          },
+          "partyMin": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "partyMax": {
+            "type": "integer",
+            "nullable": true
+          },
+          "photoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "photos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "meetingType": {
+            "type": "string",
+            "enum": [
+              "on_property",
+              "lobby_pickup",
+              "off_property"
+            ],
+            "nullable": true
+          },
+          "meetingDetail": {
+            "type": "string",
+            "nullable": true
+          },
+          "includes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bring": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "knowBefore": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bookingQuestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BookingQuestion"
+            }
+          },
+          "agentNotes": {
+            "type": "string",
+            "description": "Private guidance for the Maison agent — never shown to guests",
+            "nullable": true
+          },
+          "postBookingMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "cancellationPreset": {
+            "type": "string",
+            "enum": [
+              "flexible",
+              "24h",
+              "48h",
+              "7d",
+              "non_refundable"
+            ],
+            "nullable": true
+          },
+          "cancellationNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "daysOpen": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            },
+            "description": "0 = Sunday … 6 = Saturday"
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+              "example": "14:00",
+              "description": "Default start time"
+            },
+            "description": "Default start times (slots model)"
+          },
+          "slotCapacity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unitsTotal": {
+            "type": "integer",
+            "description": "per_unit model: pool size",
+            "nullable": true
+          },
+          "hoursOpen": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)",
+            "nullable": true
+          },
+          "hoursClose": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)",
+            "nullable": true
+          },
+          "hostName": {
+            "type": "string",
+            "nullable": true
+          },
+          "hostRole": {
+            "type": "string",
+            "nullable": true
+          },
+          "pricesIncludeTax": {
+            "type": "boolean"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Keep an existing row"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "price": {
+                  "type": "number",
+                  "description": "Amount in major units of `currency`"
+                },
+                "isDefault": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "price",
+                "isDefault"
+              ]
+            },
+            "description": "Full-replace collection"
+          },
+          "customerTypes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Keep an existing row"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "ageRange": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "price": {
+                  "type": "number",
+                  "description": "Amount in major units of `currency`"
+                },
+                "maxPerBooking": {
+                  "type": "integer",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "label",
+                "ageRange",
+                "price",
+                "maxPerBooking"
+              ]
+            },
+            "description": "Full-replace collection"
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Keep an existing row"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number",
+                  "description": "Amount in major units of `currency`"
+                },
+                "isTaxable": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "label",
+                "amount",
+                "isTaxable"
+              ]
+            },
+            "description": "Full-replace collection"
+          },
+          "ratePlans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Keep an existing row"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "factor": {
+                  "type": "number",
+                  "description": "Price multiplier, e.g. 1.25 for high season"
+                },
+                "isActive": {
+                  "type": "boolean"
+                },
+                "effectiveFrom": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Calendar date, YYYY-MM-DD",
+                  "nullable": true
+                },
+                "effectiveTo": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Calendar date, YYYY-MM-DD",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "name",
+                "factor",
+                "isActive",
+                "effectiveFrom",
+                "effectiveTo"
+              ]
+            },
+            "description": "Full-replace collection"
+          }
+        },
+        "required": [
+          "name",
+          "shortDescription",
+          "longDescription",
+          "category",
+          "inventoryModel",
+          "durationMinutes",
+          "location",
+          "leadTimeHours",
+          "basePrice",
+          "currency",
+          "partyMin",
+          "partyMax",
+          "photoUrl",
+          "photos",
+          "meetingType",
+          "meetingDetail",
+          "includes",
+          "bring",
+          "knowBefore",
+          "bookingQuestions",
+          "agentNotes",
+          "postBookingMessage",
+          "cancellationPreset",
+          "cancellationNotes",
+          "daysOpen",
+          "slots",
+          "slotCapacity",
+          "unitsTotal",
+          "hoursOpen",
+          "hoursClose",
+          "hostName",
+          "hostRole",
+          "pricesIncludeTax",
+          "variants",
+          "customerTypes",
+          "fees",
+          "ratePlans"
+        ],
+        "description": "The editable fields of an experience — what create/update accept"
+      },
+      "Experience": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "propertyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "archived"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "shortDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "longDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "wellness",
+              "activity",
+              "excursion",
+              "rental",
+              "transfer"
+            ],
+            "nullable": true
+          },
+          "inventoryModel": {
+            "type": "string",
+            "enum": [
+              "slots",
+              "per_unit"
+            ]
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "leadTimeHours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "basePrice": {
+            "type": "number",
+            "description": "Amount in major units of `currency`",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "example": "USD"
+          },
+          "partyMin": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "partyMax": {
+            "type": "integer",
+            "nullable": true
+          },
+          "photoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "photos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "meetingType": {
+            "type": "string",
+            "enum": [
+              "on_property",
+              "lobby_pickup",
+              "off_property"
+            ],
+            "nullable": true
+          },
+          "meetingDetail": {
+            "type": "string",
+            "nullable": true
+          },
+          "includes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bring": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "knowBefore": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "bookingQuestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BookingQuestion"
+            }
+          },
+          "agentNotes": {
+            "type": "string",
+            "description": "Private guidance for the Maison agent — never shown to guests",
+            "nullable": true
+          },
+          "postBookingMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "cancellationPreset": {
+            "type": "string",
+            "enum": [
+              "flexible",
+              "24h",
+              "48h",
+              "7d",
+              "non_refundable"
+            ],
+            "nullable": true
+          },
+          "cancellationNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "daysOpen": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            },
+            "description": "0 = Sunday … 6 = Saturday"
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+              "example": "14:00",
+              "description": "Default start time"
+            },
+            "description": "Default start times (slots model)"
+          },
+          "slotCapacity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unitsTotal": {
+            "type": "integer",
+            "description": "per_unit model: pool size",
+            "nullable": true
+          },
+          "hoursOpen": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)",
+            "nullable": true
+          },
+          "hoursClose": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)",
+            "nullable": true
+          },
+          "hostName": {
+            "type": "string",
+            "nullable": true
+          },
+          "hostRole": {
+            "type": "string",
+            "nullable": true
+          },
+          "pricesIncludeTax": {
+            "type": "boolean"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Variant"
+            }
+          },
+          "customerTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerType"
+            }
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fee"
+            }
+          },
+          "ratePlans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RatePlan"
+            }
+          },
+          "gate": {
+            "$ref": "#/components/schemas/SellableGate"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ExperienceStats"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "propertyId",
+          "status",
+          "name",
+          "shortDescription",
+          "longDescription",
+          "category",
+          "inventoryModel",
+          "durationMinutes",
+          "location",
+          "leadTimeHours",
+          "basePrice",
+          "currency",
+          "partyMin",
+          "partyMax",
+          "photoUrl",
+          "photos",
+          "meetingType",
+          "meetingDetail",
+          "includes",
+          "bring",
+          "knowBefore",
+          "bookingQuestions",
+          "agentNotes",
+          "postBookingMessage",
+          "cancellationPreset",
+          "cancellationNotes",
+          "daysOpen",
+          "slots",
+          "slotCapacity",
+          "unitsTotal",
+          "hoursOpen",
+          "hoursClose",
+          "hostName",
+          "hostRole",
+          "pricesIncludeTax",
+          "variants",
+          "customerTypes",
+          "fees",
+          "ratePlans",
+          "gate",
+          "stats",
+          "publishedAt",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ExperienceSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "wellness",
+              "activity",
+              "excursion",
+              "rental",
+              "transfer"
+            ],
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "archived"
+            ]
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "nullable": true
+          },
+          "basePrice": {
+            "type": "number",
+            "description": "Amount in major units of `currency`",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string"
+          },
+          "photoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "inventoryModel": {
+            "type": "string",
+            "enum": [
+              "slots",
+              "per_unit"
+            ]
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ExperienceStats"
+          },
+          "gate": {
+            "$ref": "#/components/schemas/SellableGate"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "status",
+          "location",
+          "durationMinutes",
+          "basePrice",
+          "currency",
+          "photoUrl",
+          "inventoryModel",
+          "stats",
+          "gate"
+        ],
+        "description": "Catalog row"
+      },
+      "AvailabilitySlot": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)"
+          },
+          "capacity": {
+            "type": "integer"
+          },
+          "booked": {
+            "type": "integer"
+          },
+          "held": {
+            "type": "integer"
+          },
+          "available": {
+            "type": "integer",
+            "description": "capacity − booked − held"
+          },
+          "slotId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "null = virtual slot derived from the experience defaults (no row yet)",
+            "nullable": true
+          }
+        },
+        "required": [
+          "time",
+          "capacity",
+          "booked",
+          "held",
+          "available",
+          "slotId"
+        ]
+      },
+      "AvailabilityDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "blocked"
+            ],
+            "description": "open = bookable; closed = not a scheduled day; blocked = operator block"
+          },
+          "blockReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailabilitySlot"
+            }
+          },
+          "capacity": {
+            "type": "integer"
+          },
+          "booked": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "status",
+          "blockReason",
+          "slots",
+          "capacity",
+          "booked"
+        ]
+      },
+      "Quote": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "experienceName": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD"
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)",
+            "nullable": true
+          },
+          "partySize": {
+            "type": "integer"
+          },
+          "variantId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "variantName": {
+            "type": "string",
+            "nullable": true
+          },
+          "unitPrice": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "ratePlanName": {
+            "type": "string",
+            "nullable": true
+          },
+          "factor": {
+            "type": "number"
+          },
+          "subtotal": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number",
+                  "description": "Amount in major units of `currency`"
+                }
+              },
+              "required": [
+                "label",
+                "amount"
+              ]
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "vacancies": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "closed",
+              "blocked",
+              "sold_out",
+              "past_lead_time",
+              "party_too_small",
+              "party_too_large",
+              "not_published"
+            ],
+            "description": "Why not, when available=false",
+            "nullable": true
+          },
+          "cancellationPreset": {
+            "type": "string",
+            "enum": [
+              "flexible",
+              "24h",
+              "48h",
+              "7d",
+              "non_refundable"
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "experienceId",
+          "experienceName",
+          "date",
+          "time",
+          "partySize",
+          "variantId",
+          "variantName",
+          "unitPrice",
+          "ratePlanName",
+          "factor",
+          "subtotal",
+          "fees",
+          "total",
+          "currency",
+          "available",
+          "vacancies",
+          "reason",
+          "cancellationPreset"
+        ],
+        "description": "What the agent quotes: a priced availability answer for one request"
+      },
+      "BookingGuest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "room": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "phone",
+          "room"
+        ]
+      },
+      "Booking": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "bookingCode": {
+            "type": "string",
+            "description": "Short phone-sayable code, e.g. XK8A2F",
+            "example": "XK8A2F"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "held",
+              "confirmed",
+              "cancelled",
+              "completed",
+              "no_show"
+            ]
+          },
+          "sourceChannel": {
+            "type": "string",
+            "enum": [
+              "webchat",
+              "sms",
+              "email",
+              "front_desk",
+              "phone",
+              "agent"
+            ]
+          },
+          "experienceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "experienceName": {
+            "type": "string"
+          },
+          "experienceCategory": {
+            "type": "string",
+            "enum": [
+              "wellness",
+              "activity",
+              "excursion",
+              "rental",
+              "transfer"
+            ],
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "nullable": true
+          },
+          "guest": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BookingGuest"
+              }
+            ],
+            "nullable": true
+          },
+          "variantId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "variantName": {
+            "type": "string",
+            "nullable": true
+          },
+          "partySize": {
+            "type": "integer"
+          },
+          "slotDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD"
+          },
+          "slotTime": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Amount in major units of `currency`",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string"
+          },
+          "specialRequest": {
+            "type": "string",
+            "nullable": true
+          },
+          "cancellationReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "bookedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancelledAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "For status=held: when the hold lapses",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "bookingCode",
+          "status",
+          "sourceChannel",
+          "experienceId",
+          "experienceName",
+          "experienceCategory",
+          "location",
+          "durationMinutes",
+          "guest",
+          "variantId",
+          "variantName",
+          "partySize",
+          "slotDate",
+          "slotTime",
+          "totalAmount",
+          "currency",
+          "specialRequest",
+          "cancellationReason",
+          "bookedAt",
+          "confirmedAt",
+          "cancelledAt",
+          "expiresAt"
+        ]
+      },
+      "GuestRef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "room": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "description": "Who the booking/conversation is for — matched to an existing guest by email, phone or name, created otherwise"
+      },
+      "CreateBookingInput": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD"
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)"
+          },
+          "partySize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "guest": {
+            "$ref": "#/components/schemas/GuestRef"
+          },
+          "variantId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "specialRequest": {
+            "type": "string",
+            "nullable": true
+          },
+          "sourceChannel": {
+            "type": "string",
+            "enum": [
+              "webchat",
+              "sms",
+              "email",
+              "front_desk",
+              "phone",
+              "agent"
+            ]
+          },
+          "hold": {
+            "type": "boolean",
+            "description": "true = leave the booking in `held` (expires in 15 min) instead of confirming"
+          }
+        },
+        "required": [
+          "experienceId",
+          "date",
+          "time",
+          "partySize",
+          "guest",
+          "sourceChannel"
+        ]
+      },
+      "ModifyBookingInput": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD"
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "example": "14:00",
+            "description": "Start time, HH:MM (24h)"
+          },
+          "partySize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "variantId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "specialRequest": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "Guest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "firstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "room": {
+            "type": "string",
+            "nullable": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "stayStart": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD",
+            "nullable": true
+          },
+          "stayEnd": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date, YYYY-MM-DD",
+            "nullable": true
+          },
+          "stayStatus": {
+            "type": "string",
+            "enum": [
+              "in_house",
+              "arriving",
+              "checked_out",
+              "upcoming",
+              "unknown"
+            ]
+          },
+          "bookingsCount": {
+            "type": "integer"
+          },
+          "spend": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "returning": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "name",
+          "email",
+          "phone",
+          "room",
+          "tags",
+          "notes",
+          "stayStart",
+          "stayEnd",
+          "stayStatus",
+          "bookingsCount",
+          "spend",
+          "returning",
+          "createdAt"
+        ]
+      },
+      "GuestDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Guest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "bookings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            },
+            "required": [
+              "bookings"
+            ]
+          }
+        ],
+        "description": "Guest profile + booking history"
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "guest",
+              "agent",
+              "operator",
+              "system"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "body",
+          "authorName",
+          "sentAt"
+        ]
+      },
+      "Conversation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "webchat",
+              "sms",
+              "email",
+              "front_desk"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "needs_attention",
+              "ai_handled",
+              "waiting",
+              "resolved"
+            ]
+          },
+          "topic": {
+            "type": "string",
+            "nullable": true
+          },
+          "guestId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "guestName": {
+            "type": "string",
+            "description": "\"Guest\" when no guest is linked"
+          },
+          "guestRoom": {
+            "type": "string",
+            "nullable": true
+          },
+          "experienceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "experienceName": {
+            "type": "string",
+            "nullable": true
+          },
+          "bookingId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "bookingCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastMessagePreview": {
+            "type": "string",
+            "description": "First 140 characters of the latest message",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "channel",
+          "status",
+          "topic",
+          "guestId",
+          "guestName",
+          "guestRoom",
+          "experienceId",
+          "experienceName",
+          "bookingId",
+          "bookingCode",
+          "lastMessageAt",
+          "lastMessagePreview"
+        ]
+      },
+      "ConversationDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Conversation"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "messages": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Message"
+                },
+                "description": "Oldest first"
+              }
+            },
+            "required": [
+              "messages"
+            ]
+          }
+        ]
+      },
+      "RecordConversationMessageInput": {
+        "type": "object",
+        "properties": {
+          "externalRef": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "The channel's own conversation id — idempotent thread key"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "webchat",
+              "sms",
+              "email",
+              "front_desk"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "guest",
+              "agent",
+              "operator",
+              "system"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Defaults to now"
+          },
+          "authorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "topic": {
+            "type": "string",
+            "maxLength": 500,
+            "nullable": true
+          },
+          "guest": {
+            "$ref": "#/components/schemas/GuestRef"
+          },
+          "experienceId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Must belong to the tenant (404 otherwise)",
+            "nullable": true
+          },
+          "bookingId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Must belong to the tenant (404 otherwise)",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "needs_attention",
+              "ai_handled",
+              "waiting",
+              "resolved"
+            ],
+            "description": "Flag for the operator. Default by role: guest → needs_attention, agent → ai_handled, operator → waiting, system → unchanged"
+          }
+        },
+        "required": [
+          "externalRef",
+          "channel",
+          "role",
+          "body"
+        ]
+      },
+      "CatalogKpis": {
+        "type": "object",
+        "properties": {
+          "published": {
+            "type": "integer"
+          },
+          "draft": {
+            "type": "integer"
+          },
+          "booked7d": {
+            "type": "integer"
+          },
+          "bookedPrev7d": {
+            "type": "integer"
+          },
+          "fillRate7d": {
+            "type": "number",
+            "description": "0–1"
+          },
+          "fillRatePrev7d": {
+            "type": "number",
+            "description": "0–1"
+          },
+          "revenue30d": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "revenuePrev30d": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "published",
+          "draft",
+          "booked7d",
+          "bookedPrev7d",
+          "fillRate7d",
+          "fillRatePrev7d",
+          "revenue30d",
+          "revenuePrev30d",
+          "currency"
+        ]
+      },
+      "BookingsKpis": {
+        "type": "object",
+        "properties": {
+          "bookings7d": {
+            "type": "integer"
+          },
+          "bookingsPrev7d": {
+            "type": "integer"
+          },
+          "revenue7d": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "revenuePrev7d": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "cancellationRate": {
+            "type": "number",
+            "description": "0–1"
+          },
+          "avgPartySize": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bookings7d",
+          "bookingsPrev7d",
+          "revenue7d",
+          "revenuePrev7d",
+          "cancellationRate",
+          "avgPartySize",
+          "currency"
+        ]
+      },
+      "GuestsKpis": {
+        "type": "object",
+        "properties": {
+          "inHouse": {
+            "type": "integer"
+          },
+          "arrivingToday": {
+            "type": "integer"
+          },
+          "returning": {
+            "type": "integer"
+          },
+          "avgSpend": {
+            "type": "number",
+            "description": "Amount in major units of `currency`"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "inHouse",
+          "arrivingToday",
+          "returning",
+          "avgSpend",
+          "currency"
+        ]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "app": {
+            "type": "string",
+            "example": "xos"
+          }
+        },
+        "required": [
+          "ok",
+          "app"
+        ]
+      }
+    }
+  }
+}
