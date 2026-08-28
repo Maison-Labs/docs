@@ -5,6 +5,11 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
+# NEXT_PUBLIC_* values are inlined into the client bundle at build time — they
+# come in as build args (the CI/build path reads them from the app's secret).
+ARG NEXT_PUBLIC_PORTAL_URL
+ARG NEXT_PUBLIC_TABLE_URL
+ENV NEXT_PUBLIC_PORTAL_URL=$NEXT_PUBLIC_PORTAL_URL NEXT_PUBLIC_TABLE_URL=$NEXT_PUBLIC_TABLE_URL
 RUN pnpm build
 
 # Stage 2: runtime — Next.js standalone output
@@ -18,6 +23,5 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
-# Optional runtime env: NEXT_PUBLIC_PORTAL_URL (baked at build; defaults to http://localhost:8180)
 EXPOSE 8181
 CMD ["node", "server.js"]

@@ -1,26 +1,47 @@
+# CodeBuild buildspec — adapted from the maison-apps-portal template (the main
+# copy lives there). The CI stack (maison-apps-portal/infra) provides:
+#   APP_SLUG, APP_PORT, APP_SECRET_NAME, ECR_REGISTRY, IMAGE_REPO_NAME, INSTANCE_ID
+# This app has no database, so there is no migration step. Its NEXT_PUBLIC_*
+# URLs come from the app's Secrets Manager secret and are baked in as build args.
+# Flow: build+push arm64 image -> deploy to the shared EC2 host via `ssm send-command`.
 version: 0.2
+
 phases:
   pre_build:
     commands:
       - REPOSITORY_URI="$ECR_REGISTRY/$IMAGE_REPO_NAME"
-      - echo "Logging in to Amazon ECR..."
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
       - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
+      - SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id "$APP_SECRET_NAME" --query SecretString --output text)
+      - export NEXT_PUBLIC_PORTAL_URL=$(echo "$SECRET_JSON" | jq -r .NEXT_PUBLIC_PORTAL_URL)
+      - export NEXT_PUBLIC_TABLE_URL=$(echo "$SECRET_JSON" | jq -r .NEXT_PUBLIC_TABLE_URL)
 
   build:
     commands:
-      - echo "Building Docker image..."
       - |
         docker build \
-          -t $REPOSITORY_URI:$IMAGE_TAG \
-          -t $REPOSITORY_URI:latest .
-      - echo "Pushing Docker image to ECR..."
+          --build-arg NEXT_PUBLIC_PORTAL_URL="$NEXT_PUBLIC_PORTAL_URL" \
+          --build-arg NEXT_PUBLIC_TABLE_URL="$NEXT_PUBLIC_TABLE_URL" \
+          -t $REPOSITORY_URI:$IMAGE_TAG -t $REPOSITORY_URI:latest .
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - docker push $REPOSITORY_URI:latest
 
   post_build:
     commands:
-      - echo "Image built and pushed. Deploy on the EC2 instance with docker pull + docker run (see README)."
-
-artifacts:
-  files: ['**/*']
+      - |
+        set -e
+        CMD_ID=$(aws ssm send-command \
+          --instance-ids "$INSTANCE_ID" \
+          --document-name AWS-RunShellScript \
+          --comment "deploy $APP_SLUG $IMAGE_TAG" \
+          --parameters "commands=[\"/opt/maison/deploy-app.sh $APP_SLUG $REPOSITORY_URI:$IMAGE_TAG $APP_PORT $APP_SECRET_NAME\"]" \
+          --query Command.CommandId --output text)
+        echo "Deploy command $CMD_ID sent; waiting..."
+        STATUS=Pending
+        while [ "$STATUS" = "Pending" ] || [ "$STATUS" = "InProgress" ] || [ "$STATUS" = "Delayed" ]; do
+          sleep 5
+          STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --query Status --output text)
+        done
+        aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+          --query '{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}' --output text
+        [ "$STATUS" = "Success" ] || { echo "DEPLOY FAILED ($STATUS)"; exit 1; }
