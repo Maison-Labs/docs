@@ -44,6 +44,27 @@ export function ReferenceShell({ app }: { app: DocApp }) {
     return () => controller.abort();
   }, [app.specUrl]);
 
+  // The API base URL callers copy into their integration config. Live specs
+  // self-report their deployment in `servers`; the bundled fallback carries the
+  // builder's loopback, so on a real domain (docs.<base>) derive the sibling
+  // host instead — the portal is the base domain, other apps <slug>.<base>,
+  // and only the portal's paths already carry /api/v1.
+  // (Window-dependent, so computed after mount to keep hydration stable.)
+  const [baseUrl, setBaseUrl] = useState<string | null>(null);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const fromSpec = spec.servers?.[0]?.url ?? null;
+    const suffix = app.slug === "portal" ? "" : "/api/v1";
+    const m = window.location.hostname.match(/^docs\.(.+)$/);
+    if (fromSpec && !/localhost|127\.0\.0\.1/.test(fromSpec)) setBaseUrl(fromSpec);
+    else if (m) {
+      const host = app.slug === "portal" ? m[1] : `${app.slug}.${m[1]}`;
+      setBaseUrl(`${window.location.protocol}//${host}${suffix}`);
+    } else setBaseUrl(fromSpec ?? (app.specUrl ? app.specUrl.replace(/\/openapi\.json$/, "") : null));
+  }, [spec, app.slug, app.specUrl]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const [copied, setCopied] = useState(false);
+
   const selected = allOps.find((o) => o.id === selectedId) ?? allOps[0];
 
   function select(id: string) {
@@ -67,6 +88,23 @@ export function ReferenceShell({ app }: { app: DocApp }) {
           <div className="m-subtitle" style={{ fontSize: "var(--m-text-xs)" }}>
             OpenAPI {spec.openapi} · v{spec.info.version}
           </div>
+          {baseUrl && (
+            <div className="m-subtitle mt-1" style={{ fontSize: "var(--m-text-xs)" }}>
+              Base URL <code className="m-code">{baseUrl}</code>{" "}
+              <button
+                type="button"
+                className="m-btn-secondary"
+                style={{ padding: "0 0.4rem", fontSize: "var(--m-text-xs)" }}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(baseUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          )}
         </div>
         {groups.map((group) => (
           <div key={group.tag}>
